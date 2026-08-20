@@ -1,4 +1,3 @@
-```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -6,6 +5,9 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 APT_UPDATED=0
 APT_ARGS=()
+DESKTOP_USER=""
+DESKTOP_HOME=""
+CHOICES=()
 
 die() {
     printf '\nError: %s\n' "$1" >&2
@@ -17,17 +19,21 @@ info() {
 }
 
 require_root() {
-    [[ "$(id -u)" -eq 0 ]] || die "Run this installer as root. Example: sudo bash DebiLite.sh"
+    [[ "$(id -u)" -eq 0 ]] ||
+        die "Run this installer as root. Example: sudo bash DebiLite.sh"
 }
 
 is_debian() {
     [[ -r /etc/os-release ]] || return 1
+
     . /etc/os-release
+
     [[ "${ID:-}" == "debian" || "${ID_LIKE:-}" == *debian* ]]
 }
 
 package_installed() {
-    dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null | grep -qx installed
+    dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null |
+        grep -qx installed
 }
 
 command_exists() {
@@ -38,7 +44,9 @@ apt_update() {
     [[ "$APT_UPDATED" -eq 1 ]] && return 0
 
     printf '\nUpdating package lists...\n'
+
     apt-get update
+
     APT_UPDATED=1
 }
 
@@ -47,7 +55,9 @@ install_packages() {
     local package_name
 
     for package_name in "$@"; do
-        package_installed "$package_name" || missing+=("$package_name")
+        if ! package_installed "$package_name"; then
+            missing+=("$package_name")
+        fi
     done
 
     [[ "${#missing[@]}" -eq 0 ]] && return 0
@@ -69,9 +79,11 @@ ask_yes_no() {
 
     if [[ "$default_answer" == "y" ]]; then
         read -r -p "$question [Y/n]: " answer
+
         [[ -z "$answer" || "$answer" =~ ^[Yy]$ ]]
     else
         read -r -p "$question [y/N]: " answer
+
         [[ "$answer" =~ ^[Yy]$ ]]
     fi
 }
@@ -121,36 +133,32 @@ ensure_terminal() {
         konsole \
         gnome-terminal
     do
-        command_exists "$terminal" && return 0
+        if command_exists "$terminal"; then
+            return 0
+        fi
     done
 
     install_packages xterm
 }
 
 install_lightdm() {
-    install_packages lightdm lightdm-gtk-greeter
-
     if command_exists debconf-set-selections; then
         printf '%s\n' \
-            'lightdm shared/default-x-display-manager select /usr/sbin/lightdm' |
+            'lightdm shared/default-x-display-manager select lightdm' |
             debconf-set-selections
+    fi
+
+    install_packages lightdm lightdm-gtk-greeter
+
+    if command_exists dpkg-reconfigure; then
+        DEBIAN_FRONTEND=noninteractive \
+            dpkg-reconfigure lightdm >/dev/null 2>&1 || true
     fi
 
     if command_exists systemctl; then
         systemctl unmask lightdm.service >/dev/null 2>&1 || true
         systemctl enable lightdm.service >/dev/null 2>&1 || true
         systemctl set-default graphical.target >/dev/null 2>&1 || true
-    fi
-
-    if [[ -d /etc/systemd/system ]] &&
-       [[ -e /lib/systemd/system/lightdm.service ]]; then
-        ln -sfn \
-            /lib/systemd/system/lightdm.service \
-            /etc/systemd/system/display-manager.service
-
-        ln -sfn \
-            /lib/systemd/system/graphical.target \
-            /etc/systemd/system/default.target
     fi
 }
 
@@ -176,6 +184,7 @@ install_core() {
         less \
         file \
         dbus-x11 \
+        dbus \
         xorg \
         xinit \
         x11-xserver-utils \
@@ -184,8 +193,7 @@ install_core() {
         tint2 \
         nitrogen \
         pcmanfm \
-        mousepad \
-        menu
+        mousepad
 
     ensure_terminal
 }
@@ -247,8 +255,11 @@ install_network_tools() {
 
 install_brave() {
     local flavor="$1"
+    local architecture
 
-    case "$(dpkg --print-architecture)" in
+    architecture="$(dpkg --print-architecture)"
+
+    case "$architecture" in
         amd64|arm64)
             ;;
         *)
@@ -259,10 +270,12 @@ install_brave() {
 
     if [[ "$flavor" == "origin" ]]; then
         printf '\nInstalling Brave Origin...\n'
-        curl -fsS https://dl.brave.com/install.sh | FLAVOR=origin sh
+        curl -fsS https://dl.brave.com/install.sh |
+            FLAVOR=origin sh
     else
         printf '\nInstalling Brave Browser...\n'
-        curl -fsS https://dl.brave.com/install.sh | sh
+        curl -fsS https://dl.brave.com/install.sh |
+            sh
     fi
 }
 
@@ -344,15 +357,21 @@ EOF
 #!/bin/sh
 
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-    dbus-update-activation-environment --systemd DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION >/dev/null 2>&1 || true
+    dbus-update-activation-environment \
+        --systemd \
+        DISPLAY \
+        XAUTHORITY \
+        XDG_CURRENT_DESKTOP \
+        DESKTOP_SESSION \
+        >/dev/null 2>&1 || true
 fi
 
-if command -v nitrogen >/dev/null 2>&1; then
+if command -v nitrogen >/dev/null 2>&1 &&
+   [ -f "$HOME/Pictures/Wallpapers/debilite.svg" ]; then
     nitrogen --restore >/dev/null 2>&1 &
-elif command -v feh >/dev/null 2>&1; then
-    if [ -f "$HOME/Pictures/Wallpapers/debilite.svg" ]; then
-        feh --bg-fill "$HOME/Pictures/Wallpapers/debilite.svg" >/dev/null 2>&1 &
-    fi
+elif command -v feh >/dev/null 2>&1 &&
+     [ -f "$HOME/Pictures/Wallpapers/debilite.svg" ]; then
+    feh --bg-fill "$HOME/Pictures/Wallpapers/debilite.svg" >/dev/null 2>&1 &
 fi
 
 if command -v tint2 >/dev/null 2>&1; then
@@ -444,7 +463,7 @@ EOF
   </placement>
 
   <theme>
-    <name>Clearlooks</name>
+    <name>Default</name>
     <titleLayout>NLIMC</titleLayout>
 
     <font place="ActiveWindow">
@@ -608,6 +627,7 @@ panel_padding = 4 2 4
 panel_background_id = 1
 wm_menu = 1
 wm_menu_tooltip = 1
+
 taskbar_mode = multi_desktop
 taskbar_padding = 2 2 2
 taskbar_background_id = 1
@@ -618,24 +638,34 @@ task_maximum_size = 200 30
 task_background_id = 2
 task_active_background_id = 3
 task_urgent_background_id = 3
+
 systray_padding = 2 0 2
 systray_sort = ascending
 systray_icon_size = 20
 systray_icon_asb = 100 0 0
+
 clock_format = %H:%M
 clock_tooltip = %A %d %B %Y
 clock_padding = 4 0
 clock_background_id = 1
+
 launcher_padding = 2 0 2
 launcher_icon_size = 22
-rounded = 0
+
+rounded = 3
 border_width = 0
 background_color = #222222 95
 border_color = #000000 0
+
 rounded = 3
 border_width = 0
 background_color = #333333 100
 border_color = #000000 0
+
+rounded = 3
+border_width = 1
+background_color = #4c7899 100
+border_color = #6d9dbc 100
 EOF
 
     cat > "$nitrogen_dir/bg-saved.cfg" <<EOF
@@ -697,8 +727,7 @@ verify_installation() {
         obconf \
         tint2 \
         nitrogen \
-        pcmanfm \
-        lightdm
+        pcmanfm
     do
         if ! package_installed "$package_name"; then
             printf 'Missing package: %s\n' "$package_name"
@@ -706,8 +735,12 @@ verify_installation() {
         fi
     done
 
-    [[ "$failed" -eq 0 ]] ||
+    if [[ "$failed" -ne 0 ]]; then
         die "Desktop verification failed."
+    fi
+
+    [[ -n "$DESKTOP_HOME" ]] ||
+        die "Desktop user was not configured."
 
     [[ -f "$DESKTOP_HOME/.xinitrc" ]] ||
         die "Missing $DESKTOP_HOME/.xinitrc"
@@ -718,11 +751,24 @@ verify_installation() {
     [[ -f "$DESKTOP_HOME/.config/openbox/rc.xml" ]] ||
         die "Missing Openbox configuration."
 
+    [[ -f "$DESKTOP_HOME/.config/openbox/menu.xml" ]] ||
+        die "Missing Openbox menu."
+
     [[ -f "$DESKTOP_HOME/.config/tint2/tint2rc" ]] ||
         die "Missing Tint2 configuration."
 
     [[ -f "$DESKTOP_HOME/.config/nitrogen/bg-saved.cfg" ]] ||
         die "Missing Nitrogen configuration."
+
+    [[ -f "$DESKTOP_HOME/Pictures/Wallpapers/debilite.svg" ]] ||
+        die "Missing DebiLite wallpaper."
+
+    if package_installed lightdm; then
+        if command_exists systemctl &&
+           [[ "$(systemctl is-enabled lightdm.service 2>/dev/null || true)" != "enabled" ]]; then
+            printf 'Warning: LightDM is installed but is not enabled.\n'
+        fi
+    fi
 
     printf '\nDesktop verification successful.\n'
 }
@@ -809,8 +855,20 @@ custom_install() {
 
 main() {
     require_root
-    is_debian || die "This script is designed for Debian or Debian-based systems."
-    command_exists apt-get || die "apt-get was not found."
+
+    is_debian ||
+        die "This script is designed for Debian or Debian-based systems."
+
+    command_exists apt-get ||
+        die "apt-get was not found."
+
+    if ! command_exists dpkg; then
+        die "dpkg was not found."
+    fi
+
+    if ! command_exists dpkg-query; then
+        die "dpkg-query was not found."
+    fi
 
     if ask_yes_no "Use the -y option for apt installations?"; then
         APT_ARGS=(-y)
@@ -847,7 +905,13 @@ main() {
     verify_installation
 
     printf '\nInstallation complete.\n'
-    printf 'Reboot the system and LightDM should start Openbox automatically.\n'
+
+    if package_installed lightdm; then
+        printf 'Reboot the system and LightDM should start Openbox automatically.\n'
+    else
+        printf 'LightDM was not installed. Start Openbox through your existing display manager or X session.\n'
+    fi
+
     printf 'Right click on the desktop for the Openbox menu.\n'
     printf 'Super+Return opens a terminal.\n'
     printf 'Super+E opens the file manager.\n'
@@ -855,4 +919,3 @@ main() {
 }
 
 main "$@"
-```
