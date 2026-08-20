@@ -811,7 +811,6 @@ main() {
     require_root
     is_debian || die "This script is designed for Debian or Debian-based systems."
     command_exists apt-get || die "apt-get was not found."
-    check_dependencies
 
     if ask_yes_no "Use the -y option for apt installations?"; then
         APT_ARGS=(-y)
