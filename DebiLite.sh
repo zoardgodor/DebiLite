@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+
 set -Eeuo pipefail
+
+clear
+
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 APT_UPDATED=0
 APT_ARGS=()
