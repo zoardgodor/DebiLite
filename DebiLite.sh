@@ -9,61 +9,8 @@ require_root() { [[ "$(id -u)" -eq 0 ]] || die "Run this installer as root. Exam
 is_debian() { [[ -r /etc/os-release ]] || return 1; . /etc/os-release; [[ "${ID:-}" == "debian" || "${ID_LIKE:-}" == *debian* ]]; }
 package_installed() { dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null | grep -qx installed; }
 
-internet_ok() {
-    command -v curl >/dev/null 2>&1 && curl -fsS --connect-timeout 5 --max-time 12 https://deb.debian.org/ >/dev/null 2>&1 && return 0
-    command -v wget >/dev/null 2>&1 && wget -q --timeout=8 --tries=1 --spider https://deb.debian.org/ && return 0
-    return 1
-}
-
-start_network_manager() {
-    command -v systemctl >/dev/null 2>&1 && systemctl start NetworkManager.service >/dev/null 2>&1 || true
-    command -v service >/dev/null 2>&1 && service NetworkManager start >/dev/null 2>&1 || true
-}
-
-connect_network() {
-    start_network_manager
-    if command -v nmtui >/dev/null 2>&1; then
-        printf '\nThe NetworkManager text interface will start. Use Activate a connection for visible Wi-Fi networks, or Edit a connection to add a hidden network.\n'
-        nmtui || true
-        return 0
-    fi
-    if command -v nmcli >/dev/null 2>&1; then
-        printf '\nAvailable Wi-Fi networks:\n'
-        nmcli device wifi list --rescan yes || true
-        local ssid password hidden
-        read -r -p "SSID (enter it for a hidden network too): " ssid
-        [[ -n "$ssid" ]] || return 1
-        read -r -s -p "Wi-Fi password (leave empty for an open network): " password
-        printf '\n'
-        read -r -p "Hidden network? [y/N]: " hidden
-        if [[ "$hidden" =~ ^[Yy]$ ]]; then
-            [[ -n "$password" ]] && nmcli device wifi connect "$ssid" password "$password" hidden yes || nmcli device wifi connect "$ssid" hidden yes
-        elif [[ -n "$password" ]]; then
-            nmcli device wifi connect "$ssid" password "$password"
-        else
-            nmcli device wifi connect "$ssid"
-        fi
-        return $?
-    fi
-    printf '\nNo usable network manager is available. Connect Ethernet before NetworkManager can be installed.\n'
-    return 1
-}
-
-ensure_internet() {
-    internet_ok && return 0
-    while ! internet_ok; do
-        printf '\nThere is no working internet connection. Press Enter to open the network interface. Quit: q.\n'
-        local answer
-        read -r -p "Continue? [Enter/q]: " answer
-        [[ "$answer" =~ ^[Qq]$ ]] && die "An internet connection is required for installation."
-        connect_network || true
-        internet_ok || printf '\nThe connection is still not working.\n'
-    done
-}
-
 apt_update() {
     [[ "$APT_UPDATED" -eq 1 ]] && return 0
-    ensure_internet
     printf '\nUpdating package lists...\n'
     apt-get update
     APT_UPDATED=1
@@ -73,7 +20,6 @@ install_packages() {
     local missing=() package_name
     for package_name in "$@"; do package_installed "$package_name" || missing+=("$package_name"); done
     [[ "${#missing[@]}" -eq 0 ]] && return 0
-    ensure_internet
     apt_update
     printf '\nInstalling: %s\n' "${missing[*]}"
     apt-get install "${APT_ARGS[@]}" --no-install-recommends "${missing[@]}"
@@ -88,7 +34,7 @@ choose_multiple() {
     local title="$1"; shift
     local options=("$@") answer item index
     printf '\n%s\n' "$title"
-    for index in "${!options[@]}"; do printf '%s) %s\n' "$((index + 1))" "${options[$index]"; done
+    for index in "${!options[@]}"; do printf '%s) %s\n' "$((index + 1))" "${options[$index]}"; done
     printf 'Separate multiple choices with commas or spaces. Empty answer: none.\n'
     read -r -p "Choose: " answer
     answer="${answer//,/ }"
@@ -119,9 +65,8 @@ install_lightdm() {
 }
 
 install_core() {
-    install_packages sudo nano curl ca-certificates wget gnupg debconf bash coreutils util-linux procps iproute2 iputils-ping grep sed gawk findutils less file network-manager wpasupplicant rfkill openbox xorg xinit dbus-x11 mousepad
+    install_packages sudo nano curl ca-certificates wget gnupg debconf bash coreutils util-linux procps iproute2 iputils-ping grep sed gawk findutils less file openbox xorg xinit dbus-x11 mousepad
     ensure_terminal
-    start_network_manager
 }
 
 install_file_managers() {
@@ -153,8 +98,7 @@ install_wallpaper_tools() {
 }
 install_network_tools() {
     if [[ "$1" == gui ]]; then
-        install_packages network-manager-gnome
-        start_network_manager
+        install_packages network-manager network-manager-gnome
     fi
     if [[ "$2" == wireguard ]]; then
         install_packages wireguard wireguard-tools
@@ -164,7 +108,6 @@ install_network_tools() {
 install_brave() {
     local flavor="$1"
     case "$(dpkg --print-architecture)" in amd64|arm64) ;; *) printf '\nBrave can only be installed on amd64 and arm64 Debian systems.\n'; return 0 ;; esac
-    ensure_internet
     if [[ "$flavor" == origin ]]; then printf '\nInstalling Brave Origin...\n'; curl -fsS https://dl.brave.com/install.sh | FLAVOR=origin sh; else printf '\nInstalling Brave Browser...\n'; curl -fsS https://dl.brave.com/install.sh | sh; fi
 }
 
