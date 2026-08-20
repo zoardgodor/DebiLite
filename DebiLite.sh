@@ -52,21 +52,68 @@ ensure_terminal() {
 
 install_lightdm() {
     if command -v debconf-set-selections >/dev/null 2>&1; then
-        printf '%s\n' 'lightdm shared/default-x-display-manager select /usr/sbin/lightdm' | debconf-set-selections
+        printf '%s\n' 'lightdm shared/default-x-display-manager select /usr/sbin/lightdm' |
+            debconf-set-selections
     fi
+
     install_packages lightdm lightdm-gtk-greeter
-    command -v systemctl >/dev/null 2>&1 && systemctl unmask lightdm.service >/dev/null 2>&1 || true
-    command -v systemctl >/dev/null 2>&1 && systemctl enable lightdm.service >/dev/null 2>&1 || true
-    command -v systemctl >/dev/null 2>&1 && systemctl set-default graphical.target >/dev/null 2>&1 || true
-    if [[ -d /etc/systemd/system && -e /lib/systemd/system/lightdm.service ]]; then
-        ln -sfn /lib/systemd/system/lightdm.service /etc/systemd/system/display-manager.service
-        ln -sfn /lib/systemd/system/graphical.target /etc/systemd/system/default.target
+
+    mkdir -p /etc/lightdm/lightdm.conf.d
+
+    cat > /etc/lightdm/lightdm.conf.d/50-debilite.conf <<'EOF'
+[Seat:*]
+user-session=openbox
+EOF
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl unmask lightdm.service >/dev/null 2>&1 || true
+        systemctl enable lightdm.service >/dev/null 2>&1 || true
+        systemctl set-default graphical.target >/dev/null 2>&1 || true
     fi
 }
 
 install_core() {
-    install_packages sudo nano curl ca-certificates wget gnupg debconf bash coreutils util-linux procps iproute2 iputils-ping grep sed gawk findutils less file openbox xorg xinit dbus-x11 mousepad
+    install_packages sudo nano curl ca-certificates wget gnupg debconf bash coreutils util-linux procps iproute2 iputils-ping grep sed gawk findutils less file openbox xorg xinit dbus-x11 mousepad tint2 obconf
     ensure_terminal
+}
+
+configure_openbox() {
+    local target_user="${SUDO_USER:-}"
+    local target_home
+
+    if [[ -z "$target_user" || "$target_user" == root ]]; then
+        target_user="$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" {print $1; exit}')"
+    fi
+
+    [[ -n "$target_user" ]] || die "No normal user account was found."
+
+    target_home="$(getent passwd "$target_user" | cut -d: -f6)"
+
+    [[ -n "$target_home" && -d "$target_home" ]] ||
+        die "Could not determine the user's home directory."
+
+    mkdir -p "$target_home/.config/openbox"
+
+    cat > "$target_home/.xinitrc" <<'EOF'
+#!/bin/sh
+
+exec dbus-run-session -- openbox-session
+EOF
+
+    chmod 755 "$target_home/.xinitrc"
+
+    cat > "$target_home/.config/openbox/autostart" <<'EOF'
+#!/bin/sh
+
+tint2 >/dev/null 2>&1 &
+EOF
+
+    chmod 755 "$target_home/.config/openbox/autostart"
+
+    chown "$target_user:$target_user" \
+        "$target_home/.xinitrc" \
+        "$target_home/.config/openbox" \
+        "$target_home/.config/openbox/autostart"
 }
 
 install_file_managers() {
@@ -127,6 +174,7 @@ automatic_install() {
     install_file_managers doublecmd-gtk pcmanfm
     install_task_tools htop
     install_browser_choices brave-origin
+    configure_openbox
 }
 
 custom_install() {
@@ -149,6 +197,7 @@ custom_install() {
     install_wallpaper_tools "${wallpaper_choices[@]}"
     install_browser_choices "${browser_choices[@]}"
     install_network_tools "$network_gui" "$wireguard_choice"
+    configure_openbox
 }
 
 main() {
