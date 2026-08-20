@@ -106,18 +106,9 @@ EOF
 
     chmod 755 "$target_home/.xinitrc"
 
-    cat > "$target_home/.config/openbox/autostart" <<'EOF'
-#!/bin/sh
-
-tint2 >/dev/null 2>&1 &
-EOF
-
-    chmod 755 "$target_home/.config/openbox/autostart"
-
     chown "$target_user:$target_user" \
         "$target_home/.xinitrc" \
-        "$target_home/.config/openbox" \
-        "$target_home/.config/openbox/autostart"
+        "$target_home/.config/openbox"
 }
 
 install_file_managers() {
@@ -138,15 +129,7 @@ install_task_tools() {
         esac
     done
 }
-install_wallpaper_tools() {
-    local package_name
-    for package_name in "$@"; do
-        case "$package_name" in
-            nitrogen) install_packages nitrogen ;;
-            feh) install_packages feh ;;
-        esac
-    done
-}
+
 install_network_tools() {
     if [[ "$1" == gui ]]; then
         install_packages network-manager network-manager-gnome
@@ -182,7 +165,7 @@ automatic_install() {
 }
 
 custom_install() {
-    local file_choices=() task_choices=() wallpaper_choices=() browser_choices=()
+    local file_choices=() task_choices=() browser_choices=()
     local network_gui=no wireguard_choice=no lightdm_choice=no
     ask_yes_no "Install and enable LightDM as the default display manager?" && lightdm_choice=yes
     install_core
@@ -192,13 +175,11 @@ custom_install() {
     file_choices=("${CHOICES[@]}")
     choose_multiple "Task managers" htop lxtask
     task_choices=("${CHOICES[@]}")
-    if ask_yes_no "Install a wallpaper manager?"; then choose_multiple "Wallpaper managers" nitrogen feh; wallpaper_choices=("${CHOICES[@]}"); fi
     if ask_yes_no "Install a browser?"; then choose_multiple "Browsers" brave brave-origin; browser_choices=("${CHOICES[@]}"); fi
     ask_yes_no "Install the graphical NetworkManager applet?" && network_gui=gui
     ask_yes_no "Install WireGuard?" && wireguard_choice=wireguard
     install_file_managers "${file_choices[@]}"
     install_task_tools "${task_choices[@]}"
-    install_wallpaper_tools "${wallpaper_choices[@]}"
     install_browser_choices "${browser_choices[@]}"
     install_network_tools "$network_gui" "$wireguard_choice"
     configure_openbox
