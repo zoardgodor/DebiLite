@@ -178,6 +178,10 @@ This helps keep the resulting installation:
 * More predictable
 * Better suited to low-resource hardware
 
+## Start tint2
+
+If the desktop does not appear after startup, right-click to open the menu, launch “tint2 settings” from there, and copy the command displayed there into an autostart file located at ~/.config/openbox/autostart.
+
 ## RAM Usage
 
 Low memory consumption is one of DebiLite's primary goals.
