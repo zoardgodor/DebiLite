@@ -166,9 +166,13 @@ EOF
 
     chmod 755 "$target_home/.xinitrc"
 
-    chown "$target_user:$target_user" \
+    local target_group
+    target_group="$(id -gn "$target_user")"
+
+    chown "$target_user:$target_group" \
         "$target_home/.xinitrc" \
         "$target_home/.config/openbox"
+
 }
 
 install_file_managers() {
