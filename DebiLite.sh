@@ -151,6 +151,7 @@ install_browser_choices() {
         case "$browser" in
             brave) install_brave release ;;
             brave-origin) install_brave origin ;;
+            firefox) install_packages firefox-esr ;;
         esac
     done
 }
@@ -160,7 +161,7 @@ automatic_install() {
     install_lightdm
     install_file_managers doublecmd-gtk pcmanfm
     install_task_tools htop
-    install_browser_choices brave-origin
+    install_browser_choices firefox
     configure_openbox
 }
 
@@ -175,7 +176,12 @@ custom_install() {
     file_choices=("${CHOICES[@]}")
     choose_multiple "Task managers" htop lxtask
     task_choices=("${CHOICES[@]}")
-    if ask_yes_no "Install a browser?"; then choose_multiple "Browsers" brave brave-origin; browser_choices=("${CHOICES[@]}"); fi
+    
+    if ask_yes_no "Install a browser?"; then
+        choose_multiple "Browsers" firefox brave brave-origin
+        browser_choices=("${CHOICES[@]}")
+    fi
+    
     ask_yes_no "Install the graphical NetworkManager applet?" && network_gui=gui
     ask_yes_no "Install WireGuard?" && wireguard_choice=wireguard
     install_file_managers "${file_choices[@]}"
