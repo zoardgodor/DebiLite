@@ -81,6 +81,66 @@ install_core() {
     ensure_terminal
 }
 
+prepare_user_home() {
+    local target_user="${SUDO_USER:-}"
+    local target_home
+
+    if [[ -z "$target_user" || "$target_user" == root ]]; then
+        target_user="$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" {print $1; exit}')"
+    fi
+
+    [[ -n "$target_user" ]] || die "No normal user account was found."
+
+    target_home="$(getent passwd "$target_user" | cut -d: -f6)"
+
+    [[ -n "$target_home" && -d "$target_home" ]] ||
+        die "Could not determine the user's home directory."
+
+    local target_group
+    target_group="$(id -gn "$target_user")"
+
+    install -d -o "$target_user" -g "$target_group" -m 700 \
+        "$target_home/.config" \
+        "$target_home/.cache" \
+        "$target_home/.local" \
+        "$target_home/.local/share" \
+        "$target_home/.local/state"
+
+    chown "$target_user:$target_group" "$target_home"
+
+    printf 'Prepared user directories for %s\n' "$target_user"
+}
+
+get_target_user() {
+    local target_user="${SUDO_USER:-}"
+
+    if [[ -z "$target_user" || "$target_user" == root ]]; then
+        target_user="$(
+            getent passwd |
+            awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" {print $1; exit}'
+        )"
+    fi
+
+    [[ -n "$target_user" ]] || die "No normal user account was found."
+    printf '%s\n' "$target_user"
+}
+
+fix_home_ownership() {
+    local target_user target_home target_group
+
+    target_user="$(get_target_user)"
+    target_home="$(getent passwd "$target_user" | cut -d: -f6)"
+    target_group="$(id -gn "$target_user")"
+
+    [[ -n "$target_home" && -d "$target_home" ]] ||
+        die "Could not determine the user's home directory."
+
+    chown -R "$target_user:$target_group" "$target_home"
+
+    printf 'Home directory ownership fixed: %s:%s -> %s\n' \
+        "$target_user" "$target_group" "$target_home"
+}
+
 configure_openbox() {
     local target_user="${SUDO_USER:-}"
     local target_home
@@ -158,6 +218,7 @@ install_browser_choices() {
 
 automatic_install() {
     install_core
+    prepare_user_home
     install_lightdm
     install_file_managers doublecmd-gtk pcmanfm
     install_task_tools htop
@@ -170,6 +231,7 @@ custom_install() {
     local network_gui=no wireguard_choice=no lightdm_choice=no
     ask_yes_no "Install and enable LightDM as the default display manager?" && lightdm_choice=yes
     install_core
+    prepare_user_home
     [[ "$lightdm_choice" == yes ]] && install_lightdm
 
     choose_multiple "File managers" pcmanfm doublecmd-gtk
@@ -202,6 +264,9 @@ main() {
         read -r -p "Choose [1-3]: " mode
         case "$mode" in 1) automatic_install; break ;; 2) custom_install; break ;; 3) exit 0 ;; *) printf 'Invalid choice.\n' ;; esac
     done
+
+    fix_home_ownership
+    
     printf '\nInstallation complete. Reboot the system with the reboot command!'
 }
 
