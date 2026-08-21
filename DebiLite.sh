@@ -202,7 +202,7 @@ main() {
         read -r -p "Choose [1-3]: " mode
         case "$mode" in 1) automatic_install; break ;; 2) custom_install; break ;; 3) exit 0 ;; *) printf 'Invalid choice.\n' ;; esac
     done
-    printf '\nInstallation complete. Start Openbox with: startx\n'
+    printf '\nInstallation complete. Reboot the system with the reboot command!'
 }
 
 main "$@"
